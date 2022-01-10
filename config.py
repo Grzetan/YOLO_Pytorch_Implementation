@@ -1,0 +1,6 @@
+DATASET_PATH = './COCO2017'
+TRAIN_PATH = 'train'
+VALID_PATH = 'valid'
+IMAGES_PATH = ''
+ANNOTATIONS_PATH = '_annotations.txt'
+CLASSES_PATH = '_classes.txt'
