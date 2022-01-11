@@ -64,11 +64,34 @@ def grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, anchors_per_scale, sca
     Calculates linear index for specific cell and anchor.
     """
 
-
     idx = 0
     for i in range(0,scale_idx):
         idx += scales[i] * scales[i] * anchors_per_scale
 
-    idx += (cell_y * scales[scale_idx] + cell_x) * anchors_per_scale
-    idx -= anchors_per_scale - anchor_idx
+    y_stride = scales[scale_idx] * anchors_per_scale
+    x_stride = anchors_per_scale
+    idx += y_stride * cell_y + x_stride * cell_x + anchor_idx
     return idx
+
+def linear_to_grid(idx, anchors_per_scale, scales):
+    scale_idx = 0
+    tmp = 0
+    for S in scales:
+        tmp += S*S*anchors_per_scale
+        if idx > tmp:
+            scale_idx += 1
+        else:
+            break
+
+    for i in range(0, scale_idx):
+        idx -= scales[i] * scales[i] * anchors_per_scale
+    
+    y_stride = scales[scale_idx] * anchors_per_scale
+    x_stride = anchors_per_scale
+
+    cell_y = idx // y_stride
+    idx -= cell_y * y_stride
+    cell_x = idx // x_stride 
+    idx -= cell_x * x_stride 
+
+    return cell_x, cell_y, idx, scale_idx 

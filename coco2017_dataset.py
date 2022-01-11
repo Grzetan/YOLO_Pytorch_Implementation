@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 import os
 from PIL import Image
 import numpy as np
-from utils import plot_sample, iou, grid_to_linear
+from utils import plot_sample, iou, grid_to_linear, linear_to_grid
 
 class COCO2017(Dataset):
     def __init__(self, dataset_path, annotation_path, images_path, anchors, IMG_SIZE=416, SCALES=[13,26,53], ignore_iou_thresh=0.5, transform=None):
@@ -111,13 +111,16 @@ if __name__ == '__main__':
 
     ], bbox_params=A.BboxParams(format='coco'))
 
-    dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
-                       config.ANNOTATIONS_PATH, 
-                       config.IMAGES_PATH,
-                       config.ANCHORS,
-                       transform=transform)
+    # dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
+    #                    config.ANNOTATIONS_PATH, 
+    #                    config.IMAGES_PATH,
+    #                    config.ANCHORS,
+    #                    transform=transform)
 
-    for i in range(100, 110):
-        img, obj_scores, anchors_params = dataset[i]
-        print(anchors_params)
-        input()
+    # for i in range(100, 110):
+    #     img, obj_scores, anchors_params = dataset[i]
+    #     print(anchors_params)
+    #     input()
+    idx1 = grid_to_linear(34,51,1,2,3,config.SCALES)
+    idx2 = linear_to_grid(idx1, 3, config.SCALES)
+    print(idx1, idx2)
