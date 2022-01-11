@@ -41,6 +41,9 @@ class COCO2017(Dataset):
 
             bboxes_params[i-1,:] = [int(n) for n in corr]
 
+        # Convert to x, y, w, h
+        bboxes_params[...,2:3] = bboxes_params[...,2:3] - bboxes_params[...,0:1]
+        bboxes_params[...,3:4] = bboxes_params[...,3:4] - bboxes_params[...,1:2]
         img = Image.open(os.path.join(self.images_path, img_path)).convert('RGB')
         img = np.asarray(img)
 
@@ -49,6 +52,7 @@ class COCO2017(Dataset):
             img = transformed['image']
             bboxes_params = transformed['bboxes']
         bboxes_params = torch.tensor(bboxes_params)
+        
 
         # Build targets
         n_bboxes = sum([self.anchors_per_scale * S for S in self.instances_per_scale]) # Total number of bboxes across all scales
@@ -56,9 +60,8 @@ class COCO2017(Dataset):
 
         for bbox in bboxes_params:
             # Calculate IOU with every anchor
-            ious = iou(bbox[...,2:4].unsqueeze(0), self.anchors, only_size=True)
-
-
+            ious = iou(bbox[...,2:4], self.anchors, only_size=True)
+            
         return img, bboxes_params
 
 if __name__ == '__main__':
@@ -76,7 +79,7 @@ if __name__ == '__main__':
         A.Resize(width=450, height=450),
         A.HorizontalFlip(p=0.5)
 
-    ], bbox_params=A.BboxParams(format='pascal_voc'))
+    ], bbox_params=A.BboxParams(format='coco'))
 
     dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
                        config.ANNOTATIONS_PATH, 
