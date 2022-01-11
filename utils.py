@@ -58,3 +58,17 @@ def iou(pred, target, only_size=False):
         pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
         target_area = (target_x2 - target_x1) * (target_y2 - target_y1)  
         return intersection / (pred_area + target_area - intersection + 1e-8)
+
+def grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, anchors_per_scale, scales):
+    """
+    Calculates linear index for specific cell and anchor.
+    """
+
+
+    idx = 0
+    for i in range(0,scale_idx):
+        idx += scales[i] * scales[i] * anchors_per_scale
+
+    idx += (cell_y * scales[scale_idx] + cell_x) * anchors_per_scale
+    idx -= anchors_per_scale - anchor_idx
+    return idx

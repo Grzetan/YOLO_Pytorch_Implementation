@@ -4,20 +4,21 @@ from torch.utils.data import Dataset
 import os
 from PIL import Image
 import numpy as np
-from utils import plot_sample, iou
+from utils import plot_sample, iou, grid_to_linear
 
 class COCO2017(Dataset):
-    def __init__(self, dataset_path, annotation_path, images_path, anchors, n_classes, SCALES=[13,26,53], transform=None):
+    def __init__(self, dataset_path, annotation_path, images_path, anchors, IMG_SIZE=416, SCALES=[13,26,53], ignore_iou_thresh=0.5, transform=None):
         self.dataset_path = dataset_path
         f = open(os.path.join(dataset_path, annotation_path), 'r')
         self.annotations = f.readlines()
         f.close()
         self.images_path = os.path.join(dataset_path, images_path)
         self.transform = transform
-        self.anchors = torch.tensor(anchors)
+        self.anchors = torch.tensor(anchors) / IMG_SIZE
         self.anchors_per_scale = len(self.anchors) // len(SCALES)
-        self.n_classes = n_classes
         self.SCALES = SCALES
+        self.IMG_SIZE = IMG_SIZE
+        self.ignore_iou_thresh = ignore_iou_thresh
         self.instances_per_scale = [S * S for S in self.SCALES]
 
 
@@ -55,14 +56,43 @@ class COCO2017(Dataset):
         
 
         # Build targets
+        bboxes_params[...,0:4] /= self.IMG_SIZE
         n_bboxes = sum([self.anchors_per_scale * S for S in self.instances_per_scale]) # Total number of bboxes across all scales
-        targets = torch.zeros((n_bboxes, 6)) # For every bbox there is x, y, w, h, objectness score and class label
+        obj_scores = torch.zeros((n_bboxes))
+        anchors_params = torch.zeros((bboxes_params.shape[0], 6)) # x, y, w, h, class_label, linear_index
 
-        for bbox in bboxes_params:
+        for i, bbox in enumerate(bboxes_params):
             # Calculate IOU with every anchor
-            ious = iou(bbox[...,2:4], self.anchors, only_size=True)
+            ious = iou(bbox[...,2:4], self.anchors, only_size=True).squeeze()
+            ious_args = torch.argsort(ious, dim=0, descending=True)
+            anchor_found = False
+
+            for anchor in ious_args:
+                if anchor_found and ious[anchor] < self.ignore_iou_thresh:
+                    continue
+    
+                # Find cell and calculate linear index
+                scale_idx = torch.div(anchor, self.anchors_per_scale, rounding_mode='trunc')
+                anchor_idx = anchor % len(self.SCALES)
+                scaled_center_x, scaled_center_y = (bbox[0] + bbox[2] / 2) * self.SCALES[scale_idx], (bbox[1] + bbox[3] / 2) * self.SCALES[scale_idx]
+                cell_x, cell_y = int(scaled_center_x), int(scaled_center_y)
+                linear_idx = grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, self.anchors_per_scale, self.SCALES)
+                # If anchor is taken
+                if obj_scores[linear_idx] > 0:
+                    continue
+
+                x, y = scaled_center_x - cell_x, scaled_center_y - cell_y
+                w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
+
+                if not anchor_found:
+                    # Objetness score is equal to IOU of anchor and GT bbox
+                    obj_scores[linear_idx] = ious[anchor]
+                    anchors_params[i, :] = torch.tensor([x, y, w, h, bbox[4], linear_idx])
+                    anchor_found = True
+                else: # If anchor should be ignored
+                    obj_scores[linear_idx] = -1
             
-        return img, bboxes_params
+        return img, obj_scores, anchors_params
 
 if __name__ == '__main__':
     import config
@@ -85,10 +115,9 @@ if __name__ == '__main__':
                        config.ANNOTATIONS_PATH, 
                        config.IMAGES_PATH,
                        config.ANCHORS,
-                       config.N_CLASSES,
                        transform=transform)
 
     for i in range(100, 110):
-        img, bboxes_params = dataset[i]
-        plot_sample(img, bboxes_params, class_names)
-
+        img, obj_scores, anchors_params = dataset[i]
+        print(anchors_params)
+        input()
