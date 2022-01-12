@@ -7,7 +7,7 @@ import numpy as np
 from utils import plot_sample, iou, grid_to_linear, linear_to_grid
 
 class COCO2017(Dataset):
-    def __init__(self, dataset_path, annotation_path, images_path, anchors, IMG_SIZE=416, SCALES=[13,26,53], ignore_iou_thresh=0.5, transform=None):
+    def __init__(self, dataset_path, annotation_path, images_path, anchors, IMG_SIZE=416, SCALES=[13,26,52], ignore_iou_thresh=0.5, transform=None):
         self.dataset_path = dataset_path
         f = open(os.path.join(dataset_path, annotation_path), 'r')
         self.annotations = f.readlines()
@@ -45,6 +45,9 @@ class COCO2017(Dataset):
         # Convert to x, y, w, h
         bboxes_params[...,2:3] = bboxes_params[...,2:3] - bboxes_params[...,0:1]
         bboxes_params[...,3:4] = bboxes_params[...,3:4] - bboxes_params[...,1:2]
+        # Ensure that all bboxes have width and height of at least 1
+        bboxes_params[...,2:4][bboxes_params[...,2:4] == 0] = 1
+
         img = Image.open(os.path.join(self.images_path, img_path)).convert('RGB')
         img = np.asarray(img)
 
@@ -53,7 +56,7 @@ class COCO2017(Dataset):
             img = transformed['image']
             bboxes_params = transformed['bboxes']
         bboxes_params = torch.tensor(bboxes_params)
-        
+
 
         # Build targets
         bboxes_params[...,0:4] /= self.IMG_SIZE
@@ -91,7 +94,6 @@ class COCO2017(Dataset):
                     anchor_found = True
                 else: # If anchor should be ignored
                     obj_scores[linear_idx] = -1
-            
         return img, obj_scores, anchors_params
 
 if __name__ == '__main__':
@@ -106,21 +108,31 @@ if __name__ == '__main__':
     class_names = [cls.strip() for cls in f.readlines()]
 
     transform = A.Compose([
-        A.Resize(width=450, height=450),
-        A.HorizontalFlip(p=0.5)
-
+        A.Resize(width=config.IMG_SIZE, height=config.IMG_SIZE)
     ], bbox_params=A.BboxParams(format='coco'))
 
-    # dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
-    #                    config.ANNOTATIONS_PATH, 
-    #                    config.IMAGES_PATH,
-    #                    config.ANCHORS,
-    #                    transform=transform)
+    dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
+                       config.ANNOTATIONS_PATH, 
+                       config.IMAGES_PATH,
+                       config.ANCHORS,
+                       transform=transform)
 
-    # for i in range(100, 110):
-    #     img, obj_scores, anchors_params = dataset[i]
-    #     print(anchors_params)
-    #     input()
-    idx1 = grid_to_linear(34,51,1,2,3,config.SCALES)
-    idx2 = linear_to_grid(idx1, 3, config.SCALES)
-    print(idx1, idx2)
+    anchors = [(a[0]/config.IMG_SIZE, a[1]/config.IMG_SIZE) for a in config.ANCHORS]
+
+    for i in range(90, 110):
+        img, obj_scores, anchors_params = dataset[i]
+        
+        fig, ax = plt.subplots()
+        ax.imshow(img)
+
+        for anchor in anchors_params:
+            cell_x, cell_y, anchor_idx, scale_idx = linear_to_grid(int(anchor[-1]), 3, config.SCALES)
+            grid_size = config.IMG_SIZE / config.SCALES[scale_idx]
+            w = anchors[scale_idx * 3 + anchor_idx][0] * torch.exp(anchor[2]) * config.IMG_SIZE
+            h = anchors[scale_idx * 3 + anchor_idx][1] * torch.exp(anchor[3]) * config.IMG_SIZE
+            x = (cell_x * grid_size + anchor[0] * grid_size) - w/2
+            y = (cell_y * grid_size + anchor[1] * grid_size) - h/2
+            rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor='r', facecolor='none')
+            ax.add_patch(rect)
+        plt.show()
+
