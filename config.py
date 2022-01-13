@@ -7,6 +7,7 @@ VALID_PATH = 'valid'
 IMAGES_PATH = ''
 ANNOTATIONS_PATH = '_annotations.txt'
 CLASSES_PATH = '_classes.txt'
+YOLOV3_FILE = './cfg/yolov3.cfg'
 
 IMG_SIZE = 416
 SCALES = [13, 26, 52]
