@@ -67,9 +67,8 @@ class COCO2017(Dataset):
 
         # Build targets
         bboxes_params[...,0:4] /= self.IMG_SIZE
-        n_bboxes = sum([self.anchors_per_scale * S for S in self.instances_per_scale]) # Total number of bboxes across all scales
-        obj_scores = torch.zeros((n_bboxes))
-        anchors_params = torch.zeros((bboxes_params.shape[0], 6)) # x, y, w, h, class_label, linear_index
+        ignore_indices = []
+        anchors_params = torch.zeros((bboxes_params.shape[0], 7)) # x, y, w, h, class_label, iou score, linear_index
 
         for i, bbox in enumerate(bboxes_params):
             # Calculate IOU with every anchor
@@ -88,7 +87,7 @@ class COCO2017(Dataset):
                 cell_x, cell_y = int(scaled_center_x), int(scaled_center_y)
                 linear_idx = grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, self.anchors_per_scale, self.SCALES)
                 # If anchor is taken
-                if obj_scores[linear_idx] > 0:
+                if linear_idx in ignore_indices or linear_idx in anchors_params[...,-2]:
                     continue
 
                 x, y = scaled_center_x - cell_x, scaled_center_y - cell_y
@@ -96,12 +95,13 @@ class COCO2017(Dataset):
 
                 if not anchor_found:
                     # Objetness score is equal to IOU of anchor and GT bbox
-                    obj_scores[linear_idx] = ious[anchor]
-                    anchors_params[i, :] = torch.tensor([x, y, w, h, bbox[4], linear_idx])
+                    anchors_params[i, :] = torch.tensor([x, y, w, h, bbox[4], ious[anchor], linear_idx])
                     anchor_found = True
                 else: # If anchor should be ignored
-                    obj_scores[linear_idx] = -1
-        return img, obj_scores, anchors_params
+                    ignore_indices.append(linear_idx)
+
+        ignore_indices = torch.tensor(ignore_indices)
+        return img, anchors_params, ignore_indices
 
 if __name__ == '__main__':
     import config
@@ -126,7 +126,7 @@ if __name__ == '__main__':
         print('\r', i, '/', len(dataset), end='')
 
     # for i in range(61, 110):
-    #     img, obj_scores, anchors_params = dataset[i]
+    #     img, anchors_params, ignore_indices = dataset[i]
         
     #     fig, ax = plt.subplots()
     #     ax.imshow(img)
@@ -138,7 +138,6 @@ if __name__ == '__main__':
     #         h = anchors[scale_idx * 3 + anchor_idx][1] * torch.exp(anchor[3]) * config.IMG_SIZE
     #         x = (cell_x * grid_size + anchor[0] * grid_size) - w/2
     #         y = (cell_y * grid_size + anchor[1] * grid_size) - h/2
-    #         print(x, y, w, h)
     #         rect = patches.Rectangle((x, y), w, h, linewidth=1, edgecolor='r', facecolor='none')
     #         ax.add_patch(rect)
     #     plt.show()
