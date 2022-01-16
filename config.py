@@ -17,6 +17,7 @@ ANCHORS = [(10,13),  (16,30),  (33,23),
            (116,90),  (156,198),  (373,326)]
 
 N_CLASSES = 80
+ANCHORS_PER_SCALE = 3
 
 TRANSFORMS = A.Compose([
     A.Resize(width=IMG_SIZE, height=IMG_SIZE),

@@ -15,16 +15,28 @@ class Shortcut(nn.Module):
         self.from_ = from_
 
 class YOLOHead(nn.Module):
-    def __init__(self, scale_idx):
+    def __init__(self, anchors_per_scale, n_classes):
         super(YOLOHead, self).__init__()
-        self.scale_idx = scale_idx
+        self.n_classes = n_classes
+        self.anchors_per_scale = anchors_per_scale
 
     def forward(self, X):
-        return torch.rand((1,1000,5))
+        batch_size = X.shape[0]
+        bbox_attrs = 5+self.n_classes
+        grid_size = X.shape[-1]
+        X = X.view(batch_size, bbox_attrs*self.anchors_per_scale, grid_size*grid_size)
+        X = X.transpose(1,2).contiguous()
+        X = X.view(batch_size, grid_size*grid_size*self.anchors_per_scale, bbox_attrs)
+        X[...,:2] = torch.sigmoid(X[...,:2])
+        X[...,4] = torch.sigmoid(X[...,4])
+        return X
 
 class YOLO(nn.Module):
-    def __init__(self, cfgfile):
+    def __init__(self, cfgfile, n_classes, anchors_per_scale):
         super(YOLO, self).__init__()
+        self.device = device
+        self.n_classes = n_classes
+        self.anchors_per_scale = anchors_per_scale
         f = open(cfgfile, 'r')
         lines = [line.strip() for line in f.readlines() if line[0] != '#' and not line.startswith('\n')]
         blocks = self.create_blocks(lines)
@@ -103,10 +115,11 @@ class YOLO(nn.Module):
 
                 module.add_module(f'route_{i}', Route(start, end))
             elif block['type'] == 'yolo':
-                module.add_module(f'yolo_{i}', YOLOHead(scale_idx))
+                module.add_module(f'yolo_{i}', YOLOHead(self.anchors_per_scale, self.n_classes))
 
             output_filters.append(filters)
             prev_filters = filters
+            module.to(self.device)
             modules.append(module)
 
         return modules
@@ -138,8 +151,19 @@ class YOLO(nn.Module):
             outputs.append(X)
         return predictions
 
+    def to(self, device):
+        for module in self.modules:
+            module.to(device)
+
 if __name__ == '__main__':
-    yolo = YOLO(config.YOLOV3_FILE)
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    yolo = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE)
+    yolo.to(device)
     sample = torch.rand((1,3,416,416))
+    sample = sample.to(device)
+    print(device)
+    import time
+    start = time.time()
     output = yolo(sample)
+    print(time.time() - start)
     print(output.shape)
