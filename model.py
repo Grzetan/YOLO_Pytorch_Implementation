@@ -5,12 +5,22 @@ import config
 
 class Route(nn.Module):
     def __init__(self, start, end):
+        super(Route, self).__init__()
         self.start = start
         self.end = end
 
+class Shortcut(nn.Module):
+    def __init__(self, from_):
+        super(Shortcut, self).__init__()
+        self.from_ = from_
+
 class YOLOHead(nn.Module):
     def __init__(self, scale_idx):
+        super(YOLOHead, self).__init__()
         self.scale_idx = scale_idx
+
+    def forward(self, X):
+        return torch.rand((1,1000,5))
 
 class YOLO(nn.Module):
     def __init__(self, cfgfile):
@@ -43,7 +53,7 @@ class YOLO(nn.Module):
         return blocks[1:]
 
     def create_modules(self):
-        modules = nn.ModuleList()
+        modules = []
         prev_filters = 3
         output_filters = []
         scale_idx = 0
@@ -56,7 +66,7 @@ class YOLO(nn.Module):
                 kernel_size = int(block['size'])
                 stride = int(block['stride'])
                 activation = block['activation']
-                pad = int(block['pad'])
+                pad = (kernel_size - int(block['pad'])) // 2
                 bias = True
                 bn = False
 
@@ -72,10 +82,12 @@ class YOLO(nn.Module):
                 if activation == 'leaky':
                     module.add_module(f'leaky_{i}', nn.LeakyReLU(0.1))
                 
-                modules.append(module)
             elif block['type'] == 'upsample':
                 stride = int(block['stride'])
                 module.add_module(f'upsample_{i}', nn.Upsample(scale_factor=stride))
+            elif block['type'] == 'shortcut':
+                from_ = i + int(block['from'])
+                module.add_module(f'shortcut_{i}', Shortcut(from_))
             elif block['type'] == 'route':
                 layers = block['layers'].split(',')
                 start = int(layers[0])
@@ -99,5 +111,35 @@ class YOLO(nn.Module):
 
         return modules
 
+    def forward(self, X):
+        outputs = []
+        predictions = None
+
+        for i, module in enumerate(self.modules):
+            type_ = self.blocks[i]['type']
+            if type_ == 'convolutional' or type_ == 'upsample':
+                X = module(X)
+            elif type_ == 'shortcut':
+                X = outputs[i-1] + outputs[module[0].from_]
+            elif type_ == 'route':
+                start = module[0].start
+                end = module[0].end
+
+                if not end:
+                    X = outputs[start]
+                else:
+                    X = torch.cat((outputs[start], outputs[end]), 1)
+            elif type_ == 'yolo':
+                pred = module(X)
+                if predictions is None:
+                    predictions = pred
+                else:
+                    predictions = torch.cat((predictions, pred), 1)
+            outputs.append(X)
+        return predictions
+
 if __name__ == '__main__':
     yolo = YOLO(config.YOLOV3_FILE)
+    sample = torch.rand((1,3,416,416))
+    output = yolo(sample)
+    print(output.shape)
