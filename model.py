@@ -39,6 +39,9 @@ class YOLO(nn.Module):
         self.anchors_per_scale = anchors_per_scale
         f = open(cfgfile, 'r')
         lines = [line.strip() for line in f.readlines() if line[0] != '#' and not line.startswith('\n')]
+        # This contains indexes of modules which outputs will
+        # be used in shortcut or route layers
+        self.needed_outputs = []
         blocks = self.create_blocks(lines)
         self.info = blocks[0]
         self.blocks = blocks[1:]
@@ -99,20 +102,22 @@ class YOLO(nn.Module):
                 module.add_module(f'upsample_{i}', nn.Upsample(scale_factor=stride))
             elif block['type'] == 'shortcut':
                 from_ = i + int(block['from'])
+                self.needed_outputs.append(from_)
                 module.add_module(f'shortcut_{i}', Shortcut(from_))
             elif block['type'] == 'route':
                 layers = block['layers'].split(',')
-                start = int(layers[0])
+                start =  i + int(layers[0])
                 if len(layers) > 1:
                     end = int(layers[1])
                 else:
                     end = 0
 
                 if not end:
-                    filters = output_filters[i+start]
+                    filters = output_filters[start]
+                    self.needed_outputs.append(start)
                 else:
-                    filters = output_filters[i+start] + output_filters[end]
-
+                    filters = output_filters[start] + output_filters[end]
+                    self.needed_outputs.append(end)
                 module.add_module(f'route_{i}', Route(start, end))
             elif block['type'] == 'yolo':
                 module.add_module(f'yolo_{i}', YOLOHead(self.anchors_per_scale, self.n_classes))
@@ -125,7 +130,7 @@ class YOLO(nn.Module):
         return modules
 
     def forward(self, X):
-        outputs = []
+        outputs = {}
         predictions = None
 
         for i, module in enumerate(self.modules):
@@ -133,7 +138,7 @@ class YOLO(nn.Module):
             if type_ == 'convolutional' or type_ == 'upsample':
                 X = module(X)
             elif type_ == 'shortcut':
-                X = outputs[i-1] + outputs[module[0].from_]
+                X = X + outputs[module[0].from_]
             elif type_ == 'route':
                 start = module[0].start
                 end = module[0].end
@@ -141,14 +146,15 @@ class YOLO(nn.Module):
                 if not end:
                     X = outputs[start]
                 else:
-                    X = torch.cat((outputs[start], outputs[end]), 1)
+                    X = torch.cat((X, outputs[end]), 1)
             elif type_ == 'yolo':
                 pred = module(X)
                 if predictions is None:
                     predictions = pred
                 else:
                     predictions = torch.cat((predictions, pred), 1)
-            outputs.append(X)
+            if i in self.needed_outputs:
+                outputs[i] = X
         return predictions
 
     def to(self, device):
