@@ -19,6 +19,7 @@ class YOLOHead(nn.Module):
         super(YOLOHead, self).__init__()
         self.n_classes = n_classes
         self.anchors_per_scale = anchors_per_scale
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, X):
         batch_size = X.shape[0]
@@ -29,6 +30,7 @@ class YOLOHead(nn.Module):
         X = X.view(batch_size, grid_size*grid_size*self.anchors_per_scale, bbox_attrs)
         X[...,:2] = torch.sigmoid(X[...,:2])
         X[...,4] = torch.sigmoid(X[...,4])
+        X[...,5:] = self.softmax(X[...,5:])
         return X
 
 class YOLO(nn.Module):
@@ -165,11 +167,28 @@ if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     yolo = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE)
     yolo.to(device)
-    sample = torch.rand((1,3,416,416))
-    sample = sample.to(device)
-    print(device)
+    from coco2017_dataset import COCO2017
+    from torch.utils.data import DataLoader
+    dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
+                       config.ANNOTATIONS_PATH, 
+                       config.IMAGES_PATH,
+                       config.ANCHORS,
+                       transform=config.TRANSFORMS)
+
+    loader = DataLoader(dataset, collate_fn=dataset.collate, batch_size=1)
     import time
     start = time.time()
-    output = yolo(sample)
+
+    for i in loader:
+        imgs, targets, obj_mask, noobj_mask = i
+        imgs = imgs.to(device)
+        targets = targets.to(device)
+        obj_mask = obj_mask.to(device)
+        noobj_mask = noobj_mask.to(device)
+        break
+    from loss import YOLOLoss
+    loss = YOLOLoss()
+    output = yolo(imgs)
+    loss(output, targets, obj_mask, noobj_mask)
     print(time.time() - start)
     print(output.shape)

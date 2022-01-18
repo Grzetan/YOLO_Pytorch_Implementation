@@ -25,6 +25,20 @@ class COCO2017(Dataset):
     def __len__(self):
         return len(self.annotations)
 
+    # Function for dataloader
+    def collate(self, batch):
+        imgs = batch[0][0].unsqueeze(0)
+        targets = batch[0][1]
+        obj_mask = batch[0][2].unsqueeze(0)
+        noobj_mask = batch[0][3].unsqueeze(0)
+        for b in range(1, len(batch)):
+            imgs = torch.cat((imgs, batch[b][0].unsqueeze(0)), dim=0)
+            targets = torch.cat((targets, batch[b][1]), dim=0)
+            obj_mask = torch.cat((obj_mask, batch[b][2].unsqueeze(0)), dim=0)
+            noobj_mask = torch.cat((noobj_mask, batch[b][3].unsqueeze(0)), dim=0)
+
+        return imgs, targets, obj_mask, noobj_mask
+
     def __getitem__(self, idx):
         data = self.annotations[idx].split(' ')
         img_path = None
@@ -66,11 +80,14 @@ class COCO2017(Dataset):
 
 
         # Build targets
+        n_bboxes = sum([self.anchors_per_scale * S * S for S in self.SCALES]) # Total number of bboxes
         bboxes_params[...,0:4] /= self.IMG_SIZE
-        ignore_indices = []
-        anchors_params = torch.zeros((bboxes_params.shape[0], 7)) # x, y, w, h, class_label, iou score, linear_index
 
-        for i, bbox in enumerate(bboxes_params):
+        obj_mask = torch.zeros(n_bboxes, dtype=torch.bool)
+        noobj_mask = torch.ones(n_bboxes, dtype=torch.bool)
+        targets = torch.zeros((bboxes_params.shape[0], 6)) # x, y, w, h, objetness, class_label
+
+        for k, bbox in enumerate(bboxes_params):
             # Calculate IOU with every anchor
             ious = iou(bbox[...,2:4], self.anchors, only_size=True).squeeze()
             ious_args = torch.argsort(ious, dim=0, descending=True)
@@ -87,21 +104,21 @@ class COCO2017(Dataset):
                 cell_x, cell_y = int(scaled_center_x), int(scaled_center_y)
                 linear_idx = grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, self.anchors_per_scale, self.SCALES)
                 # If anchor is taken
-                if linear_idx in ignore_indices or linear_idx in anchors_params[...,-2]:
+                if obj_mask[linear_idx]:
                     continue
 
                 x, y = scaled_center_x - cell_x, scaled_center_y - cell_y
                 w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
 
                 if not anchor_found:
-                    # Objetness score is equal to IOU of anchor and GT bbox
-                    anchors_params[i, :] = torch.tensor([x, y, w, h, bbox[4], ious[anchor], linear_idx])
+                    targets[k][:] = torch.tensor([x, y, w, h, 1, bbox[4]])
+                    obj_mask[linear_idx] = True
+                    noobj_mask[linear_idx] = False
                     anchor_found = True
                 else: # If anchor should be ignored
-                    ignore_indices.append(linear_idx)
+                    noobj_mask[linear_idx] = False
 
-        ignore_indices = torch.tensor(ignore_indices)
-        return img, anchors_params, ignore_indices
+        return img, targets, obj_mask, noobj_mask
 
 if __name__ == '__main__':
     import config
@@ -122,7 +139,7 @@ if __name__ == '__main__':
     anchors = [(a[0]/config.IMG_SIZE, a[1]/config.IMG_SIZE) for a in config.ANCHORS]
 
     for i in range(len(dataset)):
-        img, obj_scores, anchors_params = dataset[i]
+        img, targets = dataset[i]
         print('\r', i, '/', len(dataset), end='')
 
     # for i in range(61, 110):
