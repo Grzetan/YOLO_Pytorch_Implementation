@@ -1,6 +1,6 @@
 import torch 
 import torch.nn as nn
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import os
 from PIL import Image
 import numpy as np
@@ -21,23 +21,12 @@ class COCO2017(Dataset):
         self.ignore_iou_thresh = ignore_iou_thresh
         self.instances_per_scale = [S * S for S in self.SCALES]
 
+    def get_loader(self, batch_size):
+        loader = DataLoader(self, batch_size=batch_size)
+        return loader
 
     def __len__(self):
         return len(self.annotations)
-
-    # Function for dataloader
-    def collate(self, batch):
-        imgs = batch[0][0].unsqueeze(0)
-        targets = batch[0][1]
-        obj_mask = batch[0][2].unsqueeze(0)
-        noobj_mask = batch[0][3].unsqueeze(0)
-        for b in range(1, len(batch)):
-            imgs = torch.cat((imgs, batch[b][0].unsqueeze(0)), dim=0)
-            targets = torch.cat((targets, batch[b][1]), dim=0)
-            obj_mask = torch.cat((obj_mask, batch[b][2].unsqueeze(0)), dim=0)
-            noobj_mask = torch.cat((noobj_mask, batch[b][3].unsqueeze(0)), dim=0)
-
-        return imgs, targets, obj_mask, noobj_mask
 
     def __getitem__(self, idx):
         data = self.annotations[idx].split(' ')
@@ -83,9 +72,7 @@ class COCO2017(Dataset):
         n_bboxes = sum([self.anchors_per_scale * S * S for S in self.SCALES]) # Total number of bboxes
         bboxes_params[...,0:4] /= self.IMG_SIZE
 
-        obj_mask = torch.zeros(n_bboxes, dtype=torch.bool)
-        noobj_mask = torch.ones(n_bboxes, dtype=torch.bool)
-        targets = torch.zeros((bboxes_params.shape[0], 6)) # x, y, w, h, objetness, class_label
+        targets = torch.zeros((n_bboxes, 6)) # x, y, w, h, objetness, class_label
 
         for k, bbox in enumerate(bboxes_params):
             # Calculate IOU with every anchor
@@ -104,21 +91,20 @@ class COCO2017(Dataset):
                 cell_x, cell_y = int(scaled_center_x), int(scaled_center_y)
                 linear_idx = grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, self.anchors_per_scale, self.SCALES)
                 # If anchor is taken
-                if obj_mask[linear_idx]:
+                if targets[linear_idx, 4] != 0:
                     continue
 
                 x, y = scaled_center_x - cell_x, scaled_center_y - cell_y
-                w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
+                # w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
+                w, h = bbox[2], bbox[3]
 
                 if not anchor_found:
-                    targets[k][:] = torch.tensor([x, y, w, h, 1, bbox[4]])
-                    obj_mask[linear_idx] = True
-                    noobj_mask[linear_idx] = False
+                    targets[linear_idx,:] = torch.tensor([x, y, w, h, 1, bbox[4]])
                     anchor_found = True
                 else: # If anchor should be ignored
-                    noobj_mask[linear_idx] = False
+                    targets[linear_idx,4] = -1
 
-        return img, targets, obj_mask, noobj_mask
+        return img, targets
 
 if __name__ == '__main__':
     import config

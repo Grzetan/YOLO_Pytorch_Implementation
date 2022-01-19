@@ -19,6 +19,9 @@ ANCHORS = [(10,13),  (16,30),  (33,23),
 N_CLASSES = 80
 ANCHORS_PER_SCALE = 3
 
+LEARNING_RATE = 1e-5
+WEIGHT_DECAY = 1e-4
+
 TRANSFORMS = A.Compose([
     A.Resize(width=IMG_SIZE, height=IMG_SIZE),
     A.Normalize(mean=(0,0,0), std=(1,1,1)),

@@ -28,15 +28,11 @@ class YOLOHead(nn.Module):
         X = X.view(batch_size, bbox_attrs*self.anchors_per_scale, grid_size*grid_size)
         X = X.transpose(1,2).contiguous()
         X = X.view(batch_size, grid_size*grid_size*self.anchors_per_scale, bbox_attrs)
-        X[...,:2] = torch.sigmoid(X[...,:2])
-        X[...,4] = torch.sigmoid(X[...,4])
-        X[...,5:] = self.softmax(X[...,5:])
         return X
 
 class YOLO(nn.Module):
     def __init__(self, cfgfile, n_classes, anchors_per_scale):
         super(YOLO, self).__init__()
-        self.device = device
         self.n_classes = n_classes
         self.anchors_per_scale = anchors_per_scale
         f = open(cfgfile, 'r')
@@ -47,7 +43,7 @@ class YOLO(nn.Module):
         blocks = self.create_blocks(lines)
         self.info = blocks[0]
         self.blocks = blocks[1:]
-        self.modules = self.create_modules()
+        self.create_modules()
 
     def create_blocks(self, lines):
         blocks = []
@@ -70,7 +66,7 @@ class YOLO(nn.Module):
         return blocks[1:]
 
     def create_modules(self):
-        modules = []
+        self.layers = nn.ModuleList()
         prev_filters = 3
         output_filters = []
         scale_idx = 0
@@ -126,16 +122,13 @@ class YOLO(nn.Module):
 
             output_filters.append(filters)
             prev_filters = filters
-            module.to(self.device)
-            modules.append(module)
-
-        return modules
+            self.layers.append(module)
 
     def forward(self, X):
         outputs = {}
         predictions = None
 
-        for i, module in enumerate(self.modules):
+        for i, module in enumerate(self.layers):
             type_ = self.blocks[i]['type']
             if type_ == 'convolutional' or type_ == 'upsample':
                 X = module(X)
@@ -160,7 +153,7 @@ class YOLO(nn.Module):
         return predictions
 
     def to(self, device):
-        for module in self.modules:
+        for module in self.layers:
             module.to(device)
 
 if __name__ == '__main__':
@@ -175,20 +168,18 @@ if __name__ == '__main__':
                        config.ANCHORS,
                        transform=config.TRANSFORMS)
 
-    loader = DataLoader(dataset, collate_fn=dataset.collate, batch_size=1)
+    loader = dataset.get_loader(5)
     import time
     start = time.time()
 
     for i in loader:
-        imgs, targets, obj_mask, noobj_mask = i
+        imgs, targets = i
         imgs = imgs.to(device)
         targets = targets.to(device)
-        obj_mask = obj_mask.to(device)
-        noobj_mask = noobj_mask.to(device)
         break
     from loss import YOLOLoss
-    loss = YOLOLoss()
+    loss = YOLOLoss(config.ANCHORS, config.SCALES, device)
     output = yolo(imgs)
-    loss(output, targets, obj_mask, noobj_mask)
+    print(loss(output, targets))
     print(time.time() - start)
     print(output.shape)

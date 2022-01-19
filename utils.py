@@ -19,7 +19,7 @@ def plot_sample(img, bboxes_params, class_names=None):
     
     plt.show()
 
-def iou(pred, target, only_size=False):
+def iou(pred, target, only_size=False, format_='topleft'):
     """
     Calculate IOU of two boxes
     Boxes are expected to have format (x1, y1, w, h).
@@ -37,7 +37,7 @@ def iou(pred, target, only_size=False):
         return intersection / (pred[...,0:1] * pred[...,1:2]
                                + target[...,0:1] * target[...,1:2] 
                                - intersection + 1e-8)
-    else:
+    elif format_ == 'topleft':
         assert pred.shape[-1] == 4
         assert target.shape[-1] == 4
         pred_x1 = pred[...,0:1]
@@ -48,16 +48,27 @@ def iou(pred, target, only_size=False):
         target_x2 = target[...,0:1] + target[...,2:3]
         target_y1 = target[...,1:2]
         target_y2 = target[...,1:2] + target[...,3:4]
+    elif format_ == 'midpoint':
+        assert pred.shape[-1] == 4
+        assert target.shape[-1] == 4
+        pred_x1 = pred[...,0:1] - pred[...,2:3]
+        pred_x2 = pred[...,0:1] + pred[...,2:3]
+        pred_y1 = pred[...,1:2] - pred[...,3:4]
+        pred_y2 = pred[...,1:2] + pred[...,3:4]
+        target_x1 = target[...,0:1] - target[...,2:3]
+        target_x2 = target[...,0:1] + target[...,2:3]
+        target_y1 = target[...,1:2] - target[...,3:4]
+        target_y2 = target[...,1:2] + target[...,3:4]
         
-        x1 = torch.max(pred_x1, target_x1)
-        y1 = torch.max(pred_y1, target_y1)
-        x2 = torch.min(pred_x2, target_x2)
-        y2 = torch.min(pred_y2, target_y2)
+    x1 = torch.max(pred_x1, target_x1)
+    y1 = torch.max(pred_y1, target_y1)
+    x2 = torch.min(pred_x2, target_x2)
+    y2 = torch.min(pred_y2, target_y2)
 
-        intersection = (x2 - x1) * (y2 - y1)
-        pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
-        target_area = (target_x2 - target_x1) * (target_y2 - target_y1)  
-        return intersection / (pred_area + target_area - intersection + 1e-8)
+    intersection = (x2 - x1) * (y2 - y1)
+    pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
+    target_area = (target_x2 - target_x1) * (target_y2 - target_y1)  
+    return intersection / (pred_area + target_area - intersection + 1e-8)
 
 def grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, anchors_per_scale, scales):
     """
