@@ -1,21 +1,28 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import torch
+import torch.nn as nn
 
-def plot_sample(img, bboxes_params, class_names=None):
+def plot_sample(img, bboxes_params, class_names=None, format_='corners'):
     """
     bboxes_params shape - (n,5)
     Indexes at every instance mean
     1,2,3,4,5 = x1, y1, w, h, class_idx
     """
+
     fig, ax = plt.subplots()
     ax.imshow(img)
 
     for i, box in enumerate(bboxes_params):
+        box = box.cpu().detach().numpy()
+        if format_ == 'midpoint':
+            box[0] = box[0] - box[2] / 2
+            box[1] = box[1] - box[3] / 2
         rect = patches.Rectangle(box[0:2], box[2], box[3], linewidth=1, edgecolor='r', facecolor='none')
         ax.add_patch(rect)
         if class_names is not None:
-            ax.text(box[0], box[1], class_names[int(box[4])], fontsize=10)
+            print(class_names[int(box[5])])
+            ax.text(box[0], box[1], class_names[int(box[5])], fontsize=10)
     
     plt.show()
 
@@ -104,4 +111,15 @@ def linear_to_grid(idx, anchors_per_scale, scales):
     cell_x = idx // x_stride 
     idx -= cell_x * x_stride 
 
-    return cell_x, cell_y, idx, scale_idx 
+    return cell_x, cell_y, idx, scale_idx
+
+def nms(output, objetness_thresh=0.5, iou_ignore_thresh=0.5):
+    detections = [d for d in output if d[4] > objetness_thresh]
+    detections = sorted(detections, key=lambda x: x[...,4], reverse=True)
+    after_nms = []
+
+    while detections:
+        bbox = detections.pop(0).to(output.device)
+        detections = [box for box in detections if box[5] == bbox[5] and iou(box[:4], bbox[:4], format_='midpoint') < iou_ignore_thresh]
+        after_nms.append(bbox)
+    return after_nms

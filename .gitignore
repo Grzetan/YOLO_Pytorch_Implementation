@@ -12,6 +12,8 @@ COCO2017/
 
 # C extensions
 *.so
+*.pth
+*.weights
 
 # Distribution / packaging
 .Python

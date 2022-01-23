@@ -21,8 +21,11 @@ def train(model, criterion, optimizer, train_loader, val_loader, device, epochs=
             loss.backward()
             optimizer.step()
             losses.append(loss.item())
-            print(f'\rLoss - {sum(losses) / len(losses)} {round(i / len(train_loader) * 100, 2)}', end='')
+            print(f'\rLoss - {round(sum(losses) / len(losses),3)} {round((i / len(train_loader)) * 100, 3)}%', end='')
+        torch.save(model.state_dict(), config.MODEL_PATH)
+    
 
+torch.cuda.empty_cache()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE)
 criterion = YOLOLoss(config.ANCHORS, config.SCALES, device)
@@ -37,6 +40,6 @@ val_dataset = COCO2017(os.path.join(config.DATASET_PATH, config.VALID_PATH),
                     config.IMAGES_PATH,
                     config.ANCHORS,
                     transform=config.TRANSFORMS)
-train_loader = train_dataset.get_loader(batch_size=4)
-val_loader = val_dataset.get_loader(batch_size=4)
+train_loader = train_dataset.get_loader(batch_size=3)
+val_loader = val_dataset.get_loader(batch_size=3)
 train(model, criterion, optimizer, train_loader, val_loader, device)
