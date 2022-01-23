@@ -144,6 +144,8 @@ class YOLO(nn.Module):
                     self.needed_outputs.append(end)
                 module.add_module(f'route_{i}', Route(start, end))
             elif block['type'] == 'yolo':
+                # Change number of channels in the layer before yolo head to match number of classes
+                self.layers[-1][0].out_channels = (5+self.n_classes) * self.anchors_per_scale
                 module.add_module(f'yolo_{i}', YOLOHead(self.scales[scale_idx] ,self.anchors_per_scale, self.n_classes, 
                                                         self.anchors[scale_idx*self.anchors_per_scale:(scale_idx+1)*self.anchors_per_scale]))
                 scale_idx += 1
@@ -259,31 +261,3 @@ class YOLO(nn.Module):
     def to(self, device):
         for module in self.layers:
             module.to(device)
-
-if __name__ == '__main__':
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    yolo = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE)
-    yolo.to(device)
-    from coco2017_dataset import COCO2017
-    from torch.utils.data import DataLoader
-    dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
-                       config.ANNOTATIONS_PATH, 
-                       config.IMAGES_PATH,
-                       config.ANCHORS,
-                       transform=config.TRANSFORMS)
-
-    loader = dataset.get_loader(5)
-    import time
-    start = time.time()
-
-    for i in loader:
-        imgs, targets = i
-        imgs = imgs.to(device)
-        targets = targets.to(device)
-        break
-    from loss import YOLOLoss
-    loss = YOLOLoss(config.ANCHORS, config.SCALES, device)
-    output = yolo(imgs)
-    print(loss(output, targets))
-    print(time.time() - start)
-    print(output.shape)

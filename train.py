@@ -27,7 +27,7 @@ def train(model, criterion, optimizer, train_loader, val_loader, device, epochs=
 
 torch.cuda.empty_cache()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-model = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE)
+model = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE, config.SCALES, config.ANCHORS)
 criterion = YOLOLoss(config.ANCHORS, config.SCALES, device)
 optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
 train_dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
