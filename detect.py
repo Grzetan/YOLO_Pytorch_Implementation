@@ -12,27 +12,20 @@ dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH),
                    config.ANCHORS,
                    transform=config.TRANSFORMS)
 
-raw_dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
-                   config.ANNOTATIONS_PATH, 
-                   config.IMAGES_PATH,
-                   config.ANCHORS,
-                   transform=config.RAW_TRANSFORMS)
-
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'gpu')
+device = torch.device('cuda:0' if not torch.cuda.is_available() else 'cpu')
 model = YOLO(config.YOLOV3_FILE, config.N_CLASSES, config.ANCHORS_PER_SCALE, config.SCALES, config.ANCHORS)
-# model.load_state_dict(torch.load(config.MODEL_PATH))
-model.load_weights(config.WEIGHTS_PATH)
+loader = dataset.get_loader(batch_size=1)
+model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
+# model.load_weights(config.WEIGHTS_PATH)
 model.to(device)
 model.eval()
 
 for i in range(0,len(dataset)):
     img, targets = dataset[i]
-    img2, targets2 = raw_dataset[i]
+    org_img = img.squeeze().permute(1,2,0).numpy()
     start = time.time()
-
     img = img.to(device).unsqueeze(0)
-
     output = model(img)
     detections = nms(output[0])
     print(time.time() - start)
-    plot_sample(img2, detections, format_='midpoint', class_names=config.CLASS_NAMES)
+    plot_sample(org_img, detections, format_='midpoint', class_names=config.CLASS_NAMES2)

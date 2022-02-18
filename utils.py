@@ -12,70 +12,61 @@ def plot_sample(img, bboxes_params, class_names=None, format_='corners'):
 
     fig, ax = plt.subplots()
     ax.imshow(img)
-
+    print(len(bboxes_params))
     for i, box in enumerate(bboxes_params):
-        box = box.cpu().detach().numpy()
+        if isinstance(box, torch.Tensor):
+            box = box.cpu().detach().numpy()
+
         if format_ == 'midpoint':
             box[0] = box[0] - box[2] / 2
             box[1] = box[1] - box[3] / 2
         rect = patches.Rectangle(box[0:2], box[2], box[3], linewidth=1, edgecolor='r', facecolor='none')
         ax.add_patch(rect)
         if class_names is not None:
-            print(class_names[int(box[5])])
             ax.text(box[0], box[1], class_names[int(box[5])], fontsize=10)
     
     plt.show()
 
-def iou(pred, target, only_size=False, format_='topleft'):
-    """
-    Calculate IOU of two boxes
-    Boxes are expected to have format (x1, y1, w, h).
-
-    If only_size is true, function will calculate IOU 
-    only by looking at width and height, so preds and targets 
-    should have only width and height in last dimension.
-    """
+def iou(preds, labels, format_='corners', only_size=False):
     if only_size:
-        assert pred.shape[-1] == 2
-        assert target.shape[-1] == 2
-        x = torch.min(pred[...,0:1], target[...,0:1])
-        y = torch.min(pred[...,1:2], target[...,1:2])
+        assert preds.shape[-1] == 2
+        assert labels.shape[-1] == 2
+        x = torch.min(preds[...,0:1], labels[...,0:1])
+        y = torch.min(preds[...,1:2], labels[...,1:2])
         intersection = x * y
-        return intersection / (pred[...,0:1] * pred[...,1:2]
-                               + target[...,0:1] * target[...,1:2] 
+        return intersection / (preds[...,0:1] * preds[...,1:2]
+                               + labels[...,0:1] * labels[...,1:2] 
                                - intersection + 1e-8)
-    elif format_ == 'topleft':
-        assert pred.shape[-1] == 4
-        assert target.shape[-1] == 4
-        pred_x1 = pred[...,0:1]
-        pred_x2 = pred[...,0:1] + pred[...,2:3]
-        pred_y1 = pred[...,1:2]
-        pred_y2 = pred[...,1:2] + pred[...,3:4]
-        target_x1 = target[...,0:1]
-        target_x2 = target[...,0:1] + target[...,2:3]
-        target_y1 = target[...,1:2]
-        target_y2 = target[...,1:2] + target[...,3:4]
-    elif format_ == 'midpoint':
-        assert pred.shape[-1] == 4
-        assert target.shape[-1] == 4
-        pred_x1 = pred[...,0:1] - pred[...,2:3]
-        pred_x2 = pred[...,0:1] + pred[...,2:3]
-        pred_y1 = pred[...,1:2] - pred[...,3:4]
-        pred_y2 = pred[...,1:2] + pred[...,3:4]
-        target_x1 = target[...,0:1] - target[...,2:3]
-        target_x2 = target[...,0:1] + target[...,2:3]
-        target_y1 = target[...,1:2] - target[...,3:4]
-        target_y2 = target[...,1:2] + target[...,3:4]
-        
-    x1 = torch.max(pred_x1, target_x1)
-    y1 = torch.max(pred_y1, target_y1)
-    x2 = torch.min(pred_x2, target_x2)
-    y2 = torch.min(pred_y2, target_y2)
+    
+    if format_ == 'corners':
+        preds_x1 = preds[...,0:1]
+        preds_y1 = preds[...,1:2]
+        preds_x2 = preds[...,2:3]
+        preds_y2 = preds[...,3:4]
+        labels_x1 = labels[...,0:1]
+        labels_y1 = labels[...,1:2]
+        labels_x2 = labels[...,2:3]
+        labels_y2 = labels[...,3:4]
+    else:
+        preds_x1 = preds[...,0:1] - preds[...,2:3] / 2
+        preds_y1 = preds[...,1:2] - preds[...,3:4] / 2
+        preds_x2 = preds[...,0:1] + preds[...,2:3] / 2
+        preds_y2 = preds[...,1:2] + preds[...,3:4] / 2
+        labels_x1 = labels[...,0:1] - labels[...,2:3] / 2
+        labels_y1 = labels[...,1:2] - labels[...,3:4] / 2
+        labels_x2 = labels[...,0:1] + labels[...,2:3] / 2
+        labels_y2 = labels[...,1:2] + labels[...,3:4] / 2
 
-    intersection = (x2 - x1) * (y2 - y1)
-    pred_area = (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
-    target_area = (target_x2 - target_x1) * (target_y2 - target_y1)  
-    return intersection / (pred_area + target_area - intersection + 1e-8)
+    x1 = torch.max(preds_x1, labels_x1)
+    y1 = torch.max(preds_y1, labels_y1)
+    x2 = torch.min(preds_x2, labels_x2)
+    y2 = torch.max(preds_y2, labels_y2)
+
+    intersection = (x2 - x1).clamp(0) * (y2 - y1).clamp(0)
+    preds_area = (preds_x2 - preds_x1) * (preds_y2 - preds_y1)
+    labels_area = (labels_x2 - labels_x1) * (labels_y2 - labels_y1)
+
+    return intersection / (preds_area + labels_area - intersection + 1e-6)
 
 def grid_to_linear(cell_x, cell_y, anchor_idx, scale_idx, anchors_per_scale, scales):
     """
@@ -113,7 +104,7 @@ def linear_to_grid(idx, anchors_per_scale, scales):
 
     return cell_x, cell_y, idx, scale_idx
 
-def nms(output, objetness_thresh=0.5, iou_ignore_thresh=0.5):
+def nms(output, objetness_thresh=0.4, iou_ignore_thresh=0.7):
     detections = [d for d in output if d[4] > objetness_thresh]
     detections = sorted(detections, key=lambda x: x[...,4], reverse=True)
     after_nms = []

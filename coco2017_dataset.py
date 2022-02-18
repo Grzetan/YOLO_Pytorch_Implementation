@@ -22,18 +22,19 @@ class COCO2017(Dataset):
         self.instances_per_scale = [S * S for S in self.SCALES]
 
     def get_loader(self, batch_size):
-        loader = DataLoader(self, batch_size=batch_size)
+        loader = DataLoader(self, batch_size=batch_size, drop_last=True, shuffle=True)
         return loader
 
     def __len__(self):
-        return len(self.annotations)
+        return 100
+        # return len(self.annotations)
 
     def __getitem__(self, idx):
         data = self.annotations[idx].split(' ')
         img_path = None
         # bboxes_params have shape (n, 5) where n in number of objects on image
         # and 5 means (x1, y1, x2, y2, class_label) 
-        bboxes_params = np.zeros((len(data) - 1, 5), dtype=np.int16)
+        bboxes_params = np.zeros((len(data) - 1, 5))
 
         for i, elem in enumerate(data):
             # Image path is first
@@ -47,26 +48,24 @@ class COCO2017(Dataset):
 
         # Read image
         img = Image.open(os.path.join(self.images_path, img_path)).convert('RGB')
-        img = np.asarray(img)
-
-        # Ensure that all bboxes have inside of the image
-        bboxes_params[...,2:3][bboxes_params[...,2:3] > img.shape[1]] = img.shape[1]
-        bboxes_params[...,3:4][bboxes_params[...,3:4] > img.shape[0]] = img.shape[0]
-
+        w, h = img.size
+        # Ensure that all bboxes are inside of the image
+        bboxes_params[...,2:3][bboxes_params[...,2:3] > w] = w
+        bboxes_params[...,3:4][bboxes_params[...,3:4] > h] = h
         # Convert to x, y, w, h
         bboxes_params[...,2:3] = bboxes_params[...,2:3] - bboxes_params[...,0:1]
         bboxes_params[...,3:4] = bboxes_params[...,3:4] - bboxes_params[...,1:2]
+        # Convert to midx, midy, w, h
+        bboxes_params[...,0:1] = bboxes_params[...,0:1] + bboxes_params[...,2:3]/2
+        bboxes_params[...,1:2] = bboxes_params[...,1:2] + bboxes_params[...,3:4]/2
         # Ensure that all bboxes have width and height of at least 1
         bboxes_params[...,2:4][bboxes_params[...,2:4] == 0] = 1
 
         if self.transform is not None:
-            transformed = self.transform(image=img, bboxes = bboxes_params)
-            img = transformed['image']
-            bboxes_params = transformed['bboxes']
+            img, bboxes_params = self.transform((img, bboxes_params))
 
         if not isinstance(bboxes_params, torch.Tensor):
             bboxes_params = torch.tensor(bboxes_params)
-
 
         # Build targets
         n_bboxes = sum([self.anchors_per_scale * S * S for S in self.SCALES]) # Total number of bboxes
@@ -94,9 +93,8 @@ class COCO2017(Dataset):
                 if targets[linear_idx, 4] != 0:
                     continue
 
-                x, y = scaled_center_x - cell_x, scaled_center_y - cell_y
-                # w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
-                w, h = bbox[2], bbox[3]
+                w, h = torch.log(bbox[2]/self.anchors[anchor][0]), torch.log(bbox[3]/self.anchors[anchor][1])
+                x, y = scaled_center_x - cell_x + w/2, scaled_center_y - cell_y + h/2
 
                 if not anchor_found:
                     targets[linear_idx,:] = torch.tensor([x, y, w, h, 1, bbox[4]])
@@ -106,3 +104,25 @@ class COCO2017(Dataset):
 
         return img, targets
 
+if __name__ == '__main__':
+    import config
+    from transforms import *
+    import torchvision.transforms as T
+    from utils import plot_sample
+
+    t = T.Compose([
+        Resize(),
+        ToTensor(),
+        Normalize()
+    ])
+
+    dataset = COCO2017(os.path.join(config.DATASET_PATH, config.TRAIN_PATH), 
+                        config.ANNOTATIONS_PATH, 
+                        config.IMAGES_PATH,
+                        config.ANCHORS,
+                        transform=t)
+
+    for image, targets in dataset:
+        print(image)
+        print(targets.shape)
+        input()

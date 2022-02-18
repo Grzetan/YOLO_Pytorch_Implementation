@@ -16,8 +16,8 @@ class YOLOLoss(nn.Module):
         self.bce = nn.BCEWithLogitsLoss()
         self.mse = nn.MSELoss()
         self.noobj_lambda = 1
-        self.obj_lambda = 1
-        self.bbox_lambda = 1
+        self.obj_lambda = 2
+        self.bbox_lambda = 2
         self.class_lambda = 1
 
     def forward(self, preds, targets):
@@ -32,5 +32,7 @@ class YOLOLoss(nn.Module):
         class_loss = self.ce(preds[...,5:][obj_mask], targets[...,5][obj_mask].long())
         bbox_loss = self.mse(preds[...,0:4][obj_mask], targets[...,0:4][obj_mask])
 
-        return (self.obj_lambda * obj_loss + self.noobj_lambda * noobj_loss + 
+        loss = (self.obj_lambda * obj_loss + self.noobj_lambda * noobj_loss + 
                self.class_lambda * class_loss + self.bbox_lambda * bbox_loss)
+
+        return loss

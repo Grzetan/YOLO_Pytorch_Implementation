@@ -1,5 +1,5 @@
-import albumentations as A
-from albumentations.pytorch.transforms import ToTensorV2
+import torchvision.transforms as T
+from transforms import *
 
 DATASET_PATH = './COCO2017'
 TRAIN_PATH = 'train'
@@ -9,7 +9,7 @@ ANNOTATIONS_PATH = '_annotations.txt'
 CLASSES_PATH = '_classes.txt'
 YOLOV3_FILE = './cfg/yolov3.cfg'
 MODEL_PATH = './yolov3.pth'
-WEIGHTS_PATH = './yolov3.weights'
+WEIGHTS_PATH = './yolov3.weights.1'
 
 IMG_SIZE = 416
 SCALES = [13, 26, 52]
@@ -27,15 +27,11 @@ PROB_THRESH = 0.5
 LEARNING_RATE = 1e-5
 WEIGHT_DECAY = 1e-4
 
-TRANSFORMS = A.Compose([
-    A.Resize(width=IMG_SIZE, height=IMG_SIZE),
-    A.Normalize(mean=(0,0,0), std=(1,1,1)),
-    ToTensorV2()
-], bbox_params=A.BboxParams(format='coco'))
-
-RAW_TRANSFORMS = A.Compose([
-    A.Resize(width=IMG_SIZE, height=IMG_SIZE)
-], bbox_params=A.BboxParams(format='coco'))
+TRANSFORMS = T.Compose([
+    Resize(IMG_SIZE, IMG_SIZE),
+    ToTensor(),
+    Normalize(mean=[0,0,0], std=[1,1,1])
+])
 
 CLASS_NAMES = [
     'aeroplane',
@@ -118,4 +114,87 @@ CLASS_NAMES = [
     'vase',
     'wine glass',
     'zebra'
+]
+
+CLASS_NAMES2 = [
+    'person',
+    'bicycle',
+    'car',
+    'motorbike',
+    'aeroplane',
+    'bus',
+    'train',
+    'truck',
+    'boat',
+    'traffic light',
+    'fire hydrant',
+    'stop sign',
+    'parking meter',
+    'bench',
+    'bird',
+    'cat',
+    'dog',
+    'horse',
+    'sheep',
+    'cow',
+    'elephant',
+    'bear',
+    'zebra',
+    'giraffe',
+    'backpack',
+    'umbrella',
+    'handbag',
+    'tie',
+    'suitcase',
+    'frisbee',
+    'skis',
+    'snowboard',
+    'sports ball',
+    'kite',
+    'baseball bat',
+    'baseball glove',
+    'skateboard',
+    'surfboard',
+    'tennis racket',
+    'bottle',
+    'wine glass',
+    'cup',
+    'fork',
+    'knife',
+    'spoon',
+    'bowl',
+    'banana',
+    'apple',
+    'sandwich',
+    'orange',
+    'broccoli',
+    'carrot',
+    'hot dog',
+    'pizza',
+    'donut',
+    'cake',
+    'chair',
+    'sofa',
+    'pottedplant',
+    'bed',
+    'diningtable',
+    'toilet',
+    'tvmonitor',
+    'laptop',
+    'mouse',
+    'remote',
+    'keyboard',
+    'cell phone',
+    'microwave',
+    'oven',
+    'toaster',
+    'sink',
+    'refrigerator',
+    'book',
+    'clock',
+    'vase',
+    'scissors',
+    'teddy bear',
+    'hair drier',
+    'toothbrush'
 ]
